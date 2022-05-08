@@ -27,12 +27,14 @@ namespace ExamplesCommonCode.CommonAdmin
         [Required(AllowEmptyStrings = false)]
         [MaxLength(AuthDbConstants.UserIdSize)] 
         public string UserId { get; set; }
+
         /// <summary>
         /// The user's main email (used as one way to find the user) 
         /// </summary>
         [Required(AllowEmptyStrings = false)]
         [MaxLength(AuthDbConstants.EmailSize)] 
         public string Email { get; set; }
+
         /// <summary>
         /// The user's name
         /// </summary>
