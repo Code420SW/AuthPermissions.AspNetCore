@@ -36,7 +36,9 @@ namespace Example2.WebApiWithToken.IndividualAccounts
         public void ConfigureServices(IServiceCollection services)
         {
             var connectionString = Configuration.GetConnectionString("DefaultConnection");
+
             services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(connectionString));
+
             services.AddDefaultIdentity<IdentityUser>(
                     options => options.SignIn.RequireConfirmedAccount = false)
                 .AddEntityFrameworkStores<ApplicationDbContext>();
@@ -45,12 +47,14 @@ namespace Example2.WebApiWithToken.IndividualAccounts
             // Configure Authentication using JWT token with refresh capability
             var jwtData = new JwtSetupData();
             Configuration.Bind("JwtData", jwtData);
+
             services.AddAuthentication(auth =>
                 {
                     auth.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                     auth.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
                     auth.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
                 })
+
                 .AddJwtBearer(options =>
                 {
                     options.SaveToken = true;

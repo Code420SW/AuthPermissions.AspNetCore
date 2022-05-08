@@ -23,6 +23,12 @@
       "DatabaseName": "asp.net-Example6.Sharding_East1",
       "ConnectionName": "EastCoastServer",
       "DatabaseType": "SqlServer"
+    },
+    {
+      "Name": "Peter1",
+      "DatabaseName": "Peter1",
+      "ConnectionName": "WestCoastServer",
+      "DatabaseType": "SqlServer"
     }
   ]
 }
