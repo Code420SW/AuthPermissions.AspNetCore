@@ -18,6 +18,7 @@ namespace AuthPermissions.BaseCode.CommonCode
         /// <returns>The UserId, or null if not logged in</returns>
         public static string GetUserIdFromClaims(this IEnumerable<Claim> claims)
         {
+            // Find the Claim element whose Type is NameIdentifier and return its value.
             return claims?.SingleOrDefault(x => x.Type == ClaimTypes.NameIdentifier)?.Value;
         }
 
@@ -28,6 +29,7 @@ namespace AuthPermissions.BaseCode.CommonCode
         /// <returns>The UserId, or null if not logged in</returns>
         public static string GetUserIdFromUser(this ClaimsPrincipal user)
         {
+            // Find the Claim element whose Type is NameIdentifier and return its value. 
             return user?.Claims.GetUserIdFromClaims();
         }
 
@@ -39,6 +41,9 @@ namespace AuthPermissions.BaseCode.CommonCode
         /// <returns>The packed permissions, or null if not logged in</returns>
         public static string GetPackedPermissionsFromUser(this ClaimsPrincipal user)
         {
+            // Examine the Type property the user element and if it is "Permissions",
+            // return the Value property of the user element
+
             return user?.Claims.SingleOrDefault(x => x.Type == PermissionConstants.PackedPermissionClaimType)?.Value;
         }
 

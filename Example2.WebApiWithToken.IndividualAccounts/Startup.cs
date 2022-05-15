@@ -45,7 +45,7 @@ namespace Example2.WebApiWithToken.IndividualAccounts
 
 
             // Configure Authentication using JWT token with refresh capability
-            var jwtData = new JwtSetupData();
+            JwtSetupData jwtData = new();
             Configuration.Bind("JwtData", jwtData);
 
             services.AddAuthentication(auth =>

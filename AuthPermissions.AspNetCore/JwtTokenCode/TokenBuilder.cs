@@ -52,9 +52,20 @@ namespace AuthPermissions.AspNetCore.JwtTokenCode
         /// <returns></returns>
         public async Task<string> GenerateJwtTokenAsync(string userId)
         {
+            //
+            // This will return the required AuthP claims, plus any extra claims from registered <see cref="IClaimsAdder"/> methods
+            //
             var claims = await _claimsCalculator.GetClaimsForAuthUserAsync(userId);
+
+            //
+            // Build the JWT Token
+            //
             var tokenAndDesc = GenerateJwtTokenHandler(userId, claims);
             var token = tokenAndDesc.tokenHandler.CreateToken(tokenAndDesc.tokenDescriptor);
+
+            //
+            // This returns the JWT as a string
+            //
             return tokenAndDesc.tokenHandler.WriteToken(token);
         }
 
@@ -65,19 +76,37 @@ namespace AuthPermissions.AspNetCore.JwtTokenCode
         /// <returns></returns>
         public async Task<TokenAndRefreshToken> GenerateTokenAndRefreshTokenAsync(string userId)
         {
+            //
+            // Ensure RefreshToken lifespan has been set. If not, can't create a RefreshToken
+            //
             if (_options.ConfigureAuthPJwtToken.RefreshTokenExpires == default)
                 throw new AuthPermissionsBadDataException(
                     $"The {nameof(AuthPJwtConfiguration)}.{nameof(AuthPJwtConfiguration.RefreshTokenExpires)} must be set with a TimeSpan value.");
 
+            //
+            // This will return the required AuthP claims, plus any extra claims from registered <see cref="IClaimsAdder"/> methods
+            //
             var claims = await _claimsCalculator.GetClaimsForAuthUserAsync(userId);
+
+            //
+            // Build the JWT Token
+            //
             var tokenAndDesc = GenerateJwtTokenHandler(userId, claims);
             var token = tokenAndDesc.tokenHandler.CreateToken(tokenAndDesc.tokenDescriptor);
 
+            //
+            // Build the RefreashToken
+            // Save the RefreshToken to the db
+            //
             var refreshToken = RefreshToken.CreateNewRefreshToken(userId, token.Id);
             _context.Add(refreshToken);
             var status = await _context.SaveChangesWithChecksAsync();
             status.IfErrorsTurnToException();
 
+
+            //
+            // Return the JWT and RefreshToken
+            //
             return new TokenAndRefreshToken
             {
                 Token = tokenAndDesc.tokenHandler.WriteToken(token),
@@ -92,7 +121,9 @@ namespace AuthPermissions.AspNetCore.JwtTokenCode
         /// <returns></returns>
         public async Task<(TokenAndRefreshToken updatedTokens, int HttpStatusCode)> RefreshTokenUsingRefreshTokenAsync(TokenAndRefreshToken tokenAndRefresh)
         {
-
+            //
+            // This will extract the ClaimsPrincipal from an expired JWT token
+            //
             var claimsPrincipal = GetPrincipalFromExpiredToken(tokenAndRefresh.Token);
             if (claimsPrincipal == null)
             {
@@ -101,6 +132,9 @@ namespace AuthPermissions.AspNetCore.JwtTokenCode
                 return (null, 400); //BadRequest
             }
 
+            //
+            // Find the RefreshToken in the db
+            //
             var refreshTokenFromDb =
                 _context.RefreshTokens.SingleOrDefault(x => x.TokenValue == tokenAndRefresh.RefreshToken);
             if (refreshTokenFromDb == null)
@@ -110,12 +144,19 @@ namespace AuthPermissions.AspNetCore.JwtTokenCode
                 return (null, 400); //BadRequest
             }
 
+            //
+            // Verify the RefreshToken is still valid (not leftover from a logout or and admin action)
+            //
             if (refreshTokenFromDb.IsInvalid)
             {
                 //Refresh token was a) has already been used, or b) manually  - this is a potential problem
                 _logger.LogWarning($"The refresh token in the database was marked as {nameof(refreshTokenFromDb.IsInvalid)}. Token = {tokenAndRefresh.Token}");
                 return (null, 401); //Unauthorized - need to log in again
             }
+
+            //
+            // Check the expiration date of the RefreshToken and ensure it is still "alive"
+            //
             if (refreshTokenFromDb.AddedDateUtc.Add(_options.ConfigureAuthPJwtToken.RefreshTokenExpires) < DateTime.UtcNow)
             {
                 //Refresh token was out of date
@@ -125,20 +166,26 @@ namespace AuthPermissions.AspNetCore.JwtTokenCode
                 return (null, 401); //Unauthorized - need to log in again
             }
 
+            //
             //Success, so we ...
-            //a) get the UserId
+            //
+
+            //  a) get the UserId
             var userId = claimsPrincipal.GetUserIdFromUser();
             if (userId == null)
             {
                 throw new AuthPermissionsException(
                     $"The JTW token didn't contain a claim holding the UserId. Token = {tokenAndRefresh.Token}");
             }
-            //b) Create a JWT containing the same data, but with a new Expired time
+
+            //  b) Create a JWT containing the same data, but with a new Expired time
             var tokenAndDesc = GenerateJwtTokenHandler(userId, claimsPrincipal.Claims);
             var token = tokenAndDesc.tokenHandler.CreateToken(tokenAndDesc.tokenDescriptor);
-            //c) Mark the refreshTokenFromDb as used
+
+            //  c) Mark the old RefreshToken (refreshTokenFromDb) as used
             refreshTokenFromDb.MarkAsInvalid();
-            //d) Create a new RefreshToken and write to the database
+
+            //  d) Create a new RefreshToken and write to the database
             var newRefreshToken = RefreshToken.CreateNewRefreshToken(userId, token.Id);
 
             _context.Add(newRefreshToken);
@@ -165,8 +212,14 @@ namespace AuthPermissions.AspNetCore.JwtTokenCode
         private (JwtSecurityTokenHandler tokenHandler, SecurityTokenDescriptor tokenDescriptor)
             GenerateJwtTokenHandler(string userId, IEnumerable<Claim> claims)
         {
+            
             var tokenHandler = new JwtSecurityTokenHandler();
             var key = Encoding.ASCII.GetBytes(_options.ConfigureAuthPJwtToken.SigningKey);
+
+            // Create the new token
+            //  1. Add te user ID
+            //  2. Add our "stock" items
+            //  3. Add the passed in claims
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(new[] { new Claim(ClaimTypes.NameIdentifier, userId) }),
@@ -177,6 +230,8 @@ namespace AuthPermissions.AspNetCore.JwtTokenCode
                     new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
                 Claims = claims.ToDictionary(x => x.Type, y => (object)y.Value)
             };
+
+            //
             return (tokenHandler, tokenDescriptor);
         }
 

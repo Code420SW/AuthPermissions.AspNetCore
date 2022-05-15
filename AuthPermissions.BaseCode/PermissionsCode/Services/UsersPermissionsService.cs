@@ -29,8 +29,11 @@ namespace AuthPermissions.BaseCode.PermissionsCode.Services
         /// <returns>Returns list of permissions in current user, or null if claim not found</returns>
         public List<string> PermissionsFromUser(ClaimsPrincipal user)
         {
+            // Get the user.Clams.Value property when user.Claims.Type = "Permissions"
             var packedPermissions = user.GetPackedPermissionsFromUser();
 
+            // return a List<string> (may be an empty list) containing the Name elements
+            // extracted from the Example2Permissions enum.
             return packedPermissions.ConvertPackedPermissionToNames(_options.InternalData.EnumPermissionsType);
         }
     }

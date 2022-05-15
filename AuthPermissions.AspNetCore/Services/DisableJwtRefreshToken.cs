@@ -32,11 +32,17 @@ namespace AuthPermissions.AspNetCore.Services
         /// <param name="userId"></param>
         public async Task MarkJwtRefreshTokenAsUsedAsync(string userId)
         {
+            // Find all the RefreshTokens in the db associated with the user that
+            // are still valid sorted in descending date order, and then return
+            // the first one (may be null if no RefreshTokens exist for the user
+            // that are not expired).
             var latestValidRefreshToken = await _context.RefreshTokens
                 .Where(x => x.UserId == userId && !x.IsInvalid)
                 .OrderByDescending(x => x.AddedDateUtc)
                 .FirstOrDefaultAsync();
 
+            // If we got a valid RefreshToken for the user, mark it as invalid
+            // and save it to the database.
             if (latestValidRefreshToken != null)
             {
                 latestValidRefreshToken.MarkAsInvalid();

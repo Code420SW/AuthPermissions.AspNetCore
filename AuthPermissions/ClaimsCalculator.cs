@@ -50,20 +50,39 @@ namespace AuthPermissions
         {
             var result = new List<Claim>();
 
+            //
+            // Get the user record from the db
+            // Load any associated tenants
+            //
             var userWithTenant = await _context.AuthUsers.Where(x => x.UserId == userId)
                 .Include(x => x.UserTenant)
                 .SingleOrDefaultAsync();
 
+            //
+            // Bail if the user wasn't found or the user account is disabled
+            //
             if (userWithTenant == null || userWithTenant.IsDisabled)
                 return result;
 
+            //
+            // Created the packed permissions that are user-specific and "auto add" for an associated tenant (if any)
+            //
+            // If we have some permissions, build the new Claims record by setting the "Permissions" element
+            //
             var permissions = await CalcPermissionsForUserAsync(userId);
             if (permissions != null) 
                 result.Add(new Claim(PermissionConstants.PackedPermissionClaimType, permissions));
 
+            //
+            // If needed, build a list of Claim records associated with multi-tenant scenarions.
+            //
             if (_options.TenantType.IsMultiTenant())
                 result.AddRange(GetMultiTenantClaims(userWithTenant.UserTenant));
 
+            //
+            // Invoke and user-defined IClaimsAdder methods registered by
+            // RegisterAddClaimToUser<TClaimsAdder> during setup
+            //
             foreach (var claimsAdder in _claimsAdders)
             {
                 var extraClaim = await claimsAdder.AddClaimToUserAsync(userId);
@@ -85,12 +104,19 @@ namespace AuthPermissions
         /// <returns>a string containing the packed permissions, or null if no permissions</returns>
         private async Task<string> CalcPermissionsForUserAsync(string userId)
         {
-            //This gets all the permissions, with a distinct to remove duplicates
+            //
+            // Query the db and get all the packed permissions associated with the userId.
+            //
             var permissionsForAllRoles = await _context.UserToRoles
                 .Where(x => x.UserId == userId)
                 .Select(x => x.Role.PackedPermissionsInRole)
                 .ToListAsync();
 
+            //
+            // If this is a multi-tenant application...
+            // Get the packed permissions for any "auto add" roles associated with the tenant.
+            // If any were found, add them to the user-specific list of packed permissions created above
+            //
             if (_options.TenantType.IsMultiTenant())
             {
                 //We need to add any RoleTypes.TenantAdminAdd for a tenant user
@@ -106,11 +132,18 @@ namespace AuthPermissions
                     permissionsForAllRoles.AddRange(autoAddPermissions);
             }
 
+            //
+            // Bail if nothing was found
+            //
             if (!permissionsForAllRoles.Any())
                 return null;
 
             //thanks to https://stackoverflow.com/questions/5141863/how-to-get-distinct-characters
-            var packedPermissionsForUser = new string(string.Concat(permissionsForAllRoles).Distinct().ToArray());
+            //
+            // Mash all the permissions together and eliminate duplicates
+            //
+            var packedPermissionsForUser = 
+                new string(string.Concat(permissionsForAllRoles).Distinct().ToArray());
 
             return packedPermissionsForUser;
         }
@@ -124,13 +157,28 @@ namespace AuthPermissions
         {
             var result = new List<Claim>();
 
+            // 
+            // Return and empty list of no tenant
+            //
             if (tenant == null)
                 return result;
 
+            //
+            // This calculates the data key for given tenant.
+            // If it is a single layer multi-tenant it will by the TenantId as a string
+            // If it is a hierarchical multi-tenant it will contains a concatenation of the tenantsId in the parents as well
+            //
             var dataKey = tenant.GetTenantDataKey();
 
+
+            // 
+            // Create a new Claims and add the DataKey to the "DataKey" element
+            //
             result.Add(new Claim(PermissionConstants.DataKeyClaimType, dataKey));
 
+
+            //
+            // If sharding is enabled, add database info to the "DatabaseInfoName" element
             if (_options.TenantType.IsSharding())
             {
                 result.Add(new Claim(PermissionConstants.DatabaseInfoNameType, tenant.DatabaseInfoName));

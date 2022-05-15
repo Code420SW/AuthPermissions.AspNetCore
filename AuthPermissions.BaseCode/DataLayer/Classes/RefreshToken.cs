@@ -59,6 +59,8 @@ namespace AuthPermissions.BaseCode.DataLayer.Classes
         public static RefreshToken CreateNewRefreshToken(string userId, string jwtTokenId)
         {
             //see https://www.blinkingcaret.com/2018/05/30/refresh-tokens-in-asp-net-core-web-api/
+
+
             var randomNumber = new byte[AuthDbConstants.RefreshTokenRandomByteSize];
             using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(randomNumber);
