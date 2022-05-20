@@ -47,12 +47,17 @@ namespace AuthPermissions.AdminCode.Services
         /// <returns>query on the database</returns>
         public IQueryable<RoleWithPermissionNamesDto> QueryRoleToPermissions(string currentUserId = null)
         {
+            // If this is a single tenant setup, convert the RoleToPermission records to
+            // RolesWithPermissionNamesDto records
             if (!_isMultiTenant)
                 return MapToRoleWithPermissionNamesDto(_context.RoleToPermissions);
 
             //multi-tenant version has to filter out the roles from users that have a tenant
+            // Used to find the tenantId of the current user - can be null if not an tenant user
             var tenantId = FindTheTenantIdOfTheUser(currentUserId);
 
+            // If tenantId was not found (null) treat this as single tenant setup
+            // Otherwise, filter in the valid roles for the tenant
             return tenantId == null
                 ? MapToRoleWithPermissionNamesDto(_context.RoleToPermissions)
                 : MapToRoleWithPermissionNamesDto(_context.RoleToPermissions
@@ -247,6 +252,7 @@ namespace AuthPermissions.AdminCode.Services
         private IQueryable<RoleWithPermissionNamesDto> MapToRoleWithPermissionNamesDto(
             IQueryable<RoleToPermissions> roleToPermissions)
         {
+            // Convert the passed RoleToPermission records to RoleWithPermissionNamesDto records
             return roleToPermissions.Select(x => new RoleWithPermissionNamesDto
             {
                 RoleName = x.RoleName,

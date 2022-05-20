@@ -99,7 +99,11 @@ namespace AuthPermissions.AspNetCore
         /// <returns></returns>
         public static AuthSetupData AddSuperUserToIndividualAccounts(this AuthSetupData setupData)
         {
+            // Verify using individual accouts. Throws if not
             setupData.CheckAuthorizationIsIndividualAccounts();
+
+            // This will ensure that a user who's email/password is held in the "SuperAdmin" section of 
+            // the appsettings.json file is in the individual users account authentication database
             setupData.Options.InternalData.RunSequentiallyOptions
                 .RegisterServiceToRunInJob<StartupServiceIndividualAccountsAddSuperUser<IdentityUser>>();
 
@@ -167,6 +171,7 @@ namespace AuthPermissions.AspNetCore
         public static void SetupAspNetCoreAndDatabase(this AuthSetupData setupData,
             Action<RunSequentiallyOptions> optionsAction = null)
         {
+            // Throw if the following is true: (setupData.Options.InternalData.AuthPDatabaseType == AuthPDatabaseTypes.NotSet)
             setupData.CheckDatabaseTypeIsSet();
 
             setupData.RegisterCommonServices();
@@ -217,11 +222,18 @@ namespace AuthPermissions.AspNetCore
         private static void RegisterCommonServices(this AuthSetupData setupData)
         {
             //common tests
+            // Throw if not using in-memory db AND the following is not true:
+            // (setupData.Options.InternalData.AuthPAuthenticationType == AuthPAuthenticationTypes.NotSet)
             setupData.CheckThatAuthorizationTypeIsSetIfNotInUnitTestMode();
 
             //AuthP services
+            // Create a singleton containing the AuthPermissionsOptions sttings
             setupData.Services.AddSingleton(setupData.Options);
+
+            // Register the Authorization Policy Provider
             setupData.Services.AddSingleton<IAuthorizationPolicyProvider, AuthorizationPolicyProvider>();
+
+            //
             setupData.Services.AddSingleton<IAuthorizationHandler, PermissionPolicyHandler>();
             setupData.Services.AddScoped<IClaimsCalculator, ClaimsCalculator>();
             setupData.Services.AddTransient<IUsersPermissionsService, UsersPermissionsService>();

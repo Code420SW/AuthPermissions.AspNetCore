@@ -33,6 +33,9 @@ public static class PeriodicCookieEvent
     {
         var originalClaims = context.Principal.Claims.ToList();
 
+        //
+        // Is the cookie expired?
+        //
         if (originalClaims.GetClaimDateTimeTicksValue(TimeToRefreshUserClaimType) < DateTime.UtcNow)
         {
             //Need to refresh the user's claims 
@@ -41,20 +44,39 @@ public static class PeriodicCookieEvent
                 //this shouldn't happen, but best to return
                 return;
 
+            // Get service of type T from the System.IServiceProvider.
             var claimsCalculator = context.HttpContext.RequestServices.GetRequiredService<IClaimsCalculator>();
+
+            // This will return the AuthP claims to be added to the Cookie or JWT token
             var newClaims = await claimsCalculator.GetClaimsForAuthUserAsync(userId);
+
+            // First remove all the items in newClaims from originalClaims leaving just the claims that we won't change
+            // Then add the resulting original, unchanged claims to the new claims.
             newClaims.AddRange(originalClaims.RemoveUpdatedClaimsFromOriginalClaims(newClaims)); //Copy over unchanged claims
 
+            // Create a new cookie with the updated claims
             var identity = new ClaimsIdentity(newClaims, "Cookie");
+
+            //Initializes a new instance of the System.Security.Claims.ClaimsPrincipal class
+            //     from the specified identity.
             var newPrincipal = new ClaimsPrincipal(identity);
+
+            // Called to replace the claims principal. The supplied principal will replace the
+            //     value of the Principal property, which determines the identity of the authenticated
+            //     request.
             context.ReplacePrincipal(newPrincipal);
+
+            // If true, the cookie will be renewed
             context.ShouldRenew = true;
         }
     }
 
     private static IEnumerable<Claim> RemoveUpdatedClaimsFromOriginalClaims(this List<Claim> originalClaims, List<Claim> newClaims)
     {
+        // Build a list of the types of the claims in newClaims
         var newClaimTypes = newClaims.Select(x => x.Type);
+
+        // Update the originalClaims with everything except the claim types represented in the newClaims parameter
         return originalClaims.Where(x => !newClaimTypes.Contains(x.Type));
     }
 }

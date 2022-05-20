@@ -25,8 +25,11 @@ public class AddTenantNameClaim : IClaimsAdder
 
     public async Task<Claim> AddClaimToUserAsync(string userId)
     {
+        // Get the user name from the passed Id
         var user = (await _userAdmin.FindAuthUserByUserIdAsync(userId)).Result;
 
+        // TenantNameClaimType = const string TenantNameClaimType = "TenantName" (see above)
+        // Create a new claim with the full tenant name
         return user?.UserTenant?.TenantFullName == null
             ? null
             : new Claim(TenantNameClaimType, user.UserTenant.TenantFullName);
@@ -34,6 +37,7 @@ public class AddTenantNameClaim : IClaimsAdder
 
     public static string GetTenantNameFromUser(ClaimsPrincipal user)
     {
+        // Extract the value for the claim whose type is "TenantName" from the passed user record
         return user?.Claims.FirstOrDefault(x => x.Type == TenantNameClaimType)?.Value;
     }
 }

@@ -41,13 +41,16 @@ namespace Example3.MvcWebApp.IndividualAccounts
             var connectionString = _configuration.GetConnectionString("DefaultConnection");
             services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(connectionString));
+
             services.AddDatabaseDeveloperPageExceptionFilter();
 
             services.AddDefaultIdentity<IdentityUser>(options =>
                     options.SignIn.RequireConfirmedAccount = false)
                 .AddEntityFrameworkStores<ApplicationDbContext>();
+
             services.AddControllersWithViews()
                 .AddRazorRuntimeCompilation();
+
             services.ConfigureApplicationCookie(options =>
             {
                 //this will cause all the logged-in users to have their claims periodically updated

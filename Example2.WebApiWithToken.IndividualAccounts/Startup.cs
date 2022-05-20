@@ -96,7 +96,8 @@ namespace Example2.WebApiWithToken.IndividualAccounts
                         Issuer = jwtData.Issuer,
                         Audience = jwtData.Audience,
                         SigningKey = jwtData.SigningKey,
-                        TokenExpires = new TimeSpan(0,5,0), //Quick Token expiration because we use a refresh token
+                        //TokenExpires = new TimeSpan(0,5,0), //Quick Token expiration because we use a refresh token
+                        TokenExpires = new TimeSpan(0, 1, 0),
                         RefreshTokenExpires = new TimeSpan(1,0,0,0) //Refresh token is valid for one day
                     };
                 })

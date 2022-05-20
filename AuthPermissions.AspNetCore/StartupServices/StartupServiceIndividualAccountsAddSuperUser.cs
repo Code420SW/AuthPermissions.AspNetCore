@@ -30,9 +30,13 @@ namespace AuthPermissions.AspNetCore.StartupServices
         /// <returns></returns>
         public async ValueTask ApplyYourChangeAsync(IServiceProvider scopedServices)
         {
+            // Grab an instance of the UserManager service
             var userManager = scopedServices.GetRequiredService<UserManager<TIdentityUser>>();
 
+            // Read the "SuperAdmin" section os appsettings.json and returns the email, password tuple, or null, null
             var (email, password) = scopedServices.GetSuperUserConfigData();
+
+            // If not (null, null) add the user (if they don'r exist already).
             if (!string.IsNullOrEmpty(email))
                 await CheckAddNewUserAsync(userManager, email, password);
         }
@@ -46,12 +50,20 @@ namespace AuthPermissions.AspNetCore.StartupServices
         /// <returns></returns>
         private static async Task CheckAddNewUserAsync(UserManager<TIdentityUser> userManager, string email, string password)
         {
+            // Try to find the passed user in the authentication db
             var user = await userManager.FindByEmailAsync(email);
+
+            // Nothing more to do if found
             if (user != null)
                 return;
 
+            // Create a new record for the user (typically IdentityUser, but can be anything that UserManager can work with).
             user = new TIdentityUser { UserName = email, Email = email };
+
+            // Try to create the user
             var result = await userManager.CreateAsync(user, password);
+
+            // Throw on errors
             if (!result.Succeeded)
             {
                 var errorDescriptions = string.Join("\n", result.Errors.Select(x => x.Description));

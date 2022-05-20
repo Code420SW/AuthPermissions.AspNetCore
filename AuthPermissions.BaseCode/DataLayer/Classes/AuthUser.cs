@@ -38,14 +38,23 @@ namespace AuthPermissions.BaseCode.DataLayer.Classes
         /// <param name="userName">username - used when using Windows authentication. Generally useful for admin too.</param>
         /// <param name="roles">List of AuthP Roles for this user</param>
         /// <param name="userTenant">optional: defines multi-tenant tenant for this user</param>
-        public static IStatusGeneric<AuthUser> CreateAuthUser(string userId, string email, string userName, List<RoleToPermissions> roles, Tenant userTenant = null)
+        public static IStatusGeneric<AuthUser> CreateAuthUser(string userId,
+                                                              string email,
+                                                              string userName,
+                                                              List<RoleToPermissions> roles,
+                                                              Tenant userTenant = null)
         {
+            // Create the Master status
             var status = new StatusGenericHandler<AuthUser>();
                 
+            // Do some error-checking on the list of Role2Permissions
             status.CombineStatuses(CheckRolesAreValidForUser(roles, userTenant != null));
+
+            // Bail if any errors
             if (status.HasErrors)
                 return status;
 
+            // Create the AuthUser record and return in Master status.Result
             return status.SetResult(new AuthUser(userId, email, userName, roles, userTenant));
         }
 
@@ -231,8 +240,12 @@ namespace AuthPermissions.BaseCode.DataLayer.Classes
         /// <exception cref="NotImplementedException"></exception>
         private static IStatusGeneric CheckRolesAreValidForUser( List<RoleToPermissions> foundRoles, bool tenantUser)
         {
+            // Create the Master status
             var status = new StatusGenericHandler();
 
+            // Iterate over the pass RoleToPermissions...
+            // Add an error string to Master status of the RoleToPermission record is of
+            //  type HiddenFromTenant or TenantAutoAdd
             foreach (var foundRole in foundRoles)
             {
                 switch (tenantUser)

@@ -59,17 +59,24 @@ namespace AuthPermissions.AdminCode.Services
         /// <returns>Status containing the AuthUser with UserRoles and UserTenant, or errors</returns>
         public async Task<IStatusGeneric<AuthUser>> FindAuthUserByUserIdAsync(string userId)
         {
+            // Throw if a nill user Id passed
             if (userId == null) throw new ArgumentNullException(nameof(userId));
+
+            // Create the Master status
             var status = new StatusGenericHandler<AuthUser>();
 
+            // Find the AuthUser record in the db
+            // Grab the UserRoles and UserTenant info too
             var authUser = await _context.AuthUsers
                 .Include(x => x.UserRoles)
                 .Include(x => x.UserTenant)
                 .SingleOrDefaultAsync(x => x.UserId == userId);
 
+            // If the AuthUser wasn't found, set the Master status error message
             if (authUser == null)
                 status.AddError("Could not find the AuthP User you asked for.", nameof(userId).CamelToPascal());
 
+            // Return the AuthUser in Master status.Result
             return status.SetResult(authUser);
         }
 
@@ -80,18 +87,24 @@ namespace AuthPermissions.AdminCode.Services
         /// <returns>Status containing the AuthUser with UserRoles and UserTenant, or errors</returns>
         public async Task<IStatusGeneric<AuthUser>> FindAuthUserByEmailAsync(string email)
         {
+            // Error-check the email address and throw on fail
             if (email == null) throw new ArgumentNullException(nameof(email));
+
+            // Create the Master status
             var status = new StatusGenericHandler<AuthUser>();
 
+            // Load the AuthUser record from the db...null if not found
             var authUser = await _context.AuthUsers
                 .Include(x => x.UserRoles)
                 .Include(x => x.UserTenant)
                 .SingleOrDefaultAsync(x => x.Email == email);
 
+            // If not found, add an error message to Master status and return
             if (authUser == null)
                 status.AddError($"Could not find the AuthP User with the email of {email}.",
                     nameof(email).CamelToPascal());
 
+            // Return the AuthUser in Master status.Result
             return status.SetResult(authUser);
         }
 
@@ -192,27 +205,37 @@ namespace AuthPermissions.AdminCode.Services
         public async Task<IStatusGeneric> AddNewUserAsync(string userId, string email,
             string userName, List<string> roleNames, string tenantName = null)
         {
+            // Create the Master status and preset the message
             var status = new StatusGenericHandler
                 { Message = $"Successfully added a AuthUser with the name {userName ?? email}" };
 
+            // Validate the passed email
             if (email != null && !email.IsValidEmail())
                 status.AddError($"The email '{email}' is not a valid email.");
 
-            //Find the tenant
+            //Find the tenant and include the tenant roles
             var foundTenant = string.IsNullOrEmpty(tenantName) || tenantName == CommonConstants.EmptyTenantName
                 ? null
                 : await _context.Tenants.Include(x => x.TenantRoles)
                     .SingleOrDefaultAsync(x => x.TenantFullName == tenantName);
+
+            // Check for errors
             if (!string.IsNullOrEmpty(tenantName) && tenantName != CommonConstants.EmptyTenantName && foundTenant == null)
                 status.AddError($"A tenant with the name '{tenantName}' wasn't found.");
 
             //Find/check the roles
+            // Validate the passed roleNames are appropriate for the Tenant and get a list of valid Tenant
+            // RoleToPermissions records returned on the roleStatus.Results.
             var rolesStatus = await FindCheckRolesAreValidForUserAsync(roleNames, foundTenant, userName ?? email);
 
+            // Bail if any errors found
             if (status.CombineStatuses(rolesStatus).HasErrors)
                 return status;
 
+            // Do some error-checking
             var authUserStatus = AuthUser.CreateAuthUser(userId, email, userName, rolesStatus.Result, foundTenant);
+
+            // Bail if any errors
             if (status.CombineStatuses(authUserStatus).HasErrors)
                 return status;
 
@@ -239,33 +262,43 @@ namespace AuthPermissions.AdminCode.Services
         public async Task<IStatusGeneric> UpdateUserAsync(string userId, 
             string email = null, string userName = null, List<string> roleNames = null, string tenantName = null)
         {
+            // Nulls not allowed
             if (userId == null) throw new ArgumentNullException(nameof(userId));
 
+            // Create our Master status record
             var status = new StatusGenericHandler();
 
+            // Get the AuthUser record for the passed userId and store the result in a status
             var foundUserStatus = await FindAuthUserByUserIdAsync(userId);
+
+            // Coalesce the AuthUser status into the Master status and check for errors
             if (status.CombineStatuses(foundUserStatus).HasErrors)
                 return status;
 
+            // If the passed email and/or username are null, default to the values from the AuthUser record
             email ??= foundUserStatus.Result.Email;
             userName ??= foundUserStatus.Result.UserName;
 
+            // Set the default message in the Master status
             status.Message = $"Successfully updated a AuthUser with the name {userName ?? email}";
 
+            // Extract the AuthUser record from the AuthUser status
             var authUserToUpdate = foundUserStatus.Result;
 
+            // Error-check the passed email
             if (email != null && !email.IsValidEmail())
                 status.AddError($"The email '{email}' is not a valid email.");
 
             //Now we update the existing AuthUser's email and userName
             authUserToUpdate.ChangeUserNameAndEmailWithChecks(email, userName);
 
-            //Get current tenant as roleNames needs tenant
+            // Extract the tenant info from the AuthUser status record
             var foundTenant = foundUserStatus.Result.UserTenant;
+
+
+            //You are going to update the roles and you aren't changing the tenant, then you need to load the TenantRoles
             if (foundTenant != null && tenantName == null && roleNames != null)
-                //You are going to update the roles and you aren't changing the tenant, then you need to load the TenantRoles
-                await _context.Entry(foundTenant)
-                    .Collection(x => x.TenantRoles).LoadAsync();
+                await _context.Entry(foundTenant).Collection(x => x.TenantRoles).LoadAsync();
 
             //If tenantName isn't null, then update the user's tenant
             if (tenantName != null)
@@ -312,18 +345,24 @@ namespace AuthPermissions.AdminCode.Services
         /// <returns>status</returns>
         public async Task<IStatusGeneric> DeleteUserAsync(string userId)
         {
+            // Create the Master status
             var status = new StatusGenericHandler();
 
+            // Get the AuthUser record for the userId
             var authUser = await _context.AuthUsers.SingleOrDefaultAsync(x => x.UserId == userId);
 
+            // If the AuthUser record wasn't found, return the Mater status with an error message
             if (authUser == null)
                 return status.AddError("Could not find the user you were looking for.", nameof(userId).CamelToPascal());
 
+            // Otherwise mark the AuthUser record for deletion from the db
             _context.Remove(authUser);
+
+            // Try to remove the AuthUser and capture the results in Master status
             status.CombineStatuses( await _context.SaveChangesWithChecksAsync());
 
+            // Set the message in the Master status and return
             status.Message = $"Successfully deleted the user {authUser.UserName ?? authUser.Email}.";
-
             return status;
         }
 
@@ -341,28 +380,38 @@ namespace AuthPermissions.AdminCode.Services
             //This throws an exception if the developer hasn't configured the service
             var syncAuthenticationUsers = _syncAuthenticationUsersFactory.GetService();
 
+            // Get a list of all users from UserManager
             var authenticationUsers = await syncAuthenticationUsers.GetAllActiveUserInfoAsync();
+
+            // Get a list of all AuthUsers
             var authUserDictionary = await _context.AuthUsers
                 .Include(x => x.UserRoles)
                 .Include(x => x.UserTenant)
                 .ToDictionaryAsync(x => x.UserId);
 
+
+            // Create an empty list to hold all records needing changes
             var result = new List<SyncAuthUserWithChange>();
+
+            // Iterate through the list from UserManager...
             foreach (var authenticationUser in authenticationUsers)
             {
+                // If we found a corresponding item in the AuthUser list...
                 if (authUserDictionary.TryGetValue(authenticationUser.UserId, out var authUser))
                 {
-                    //check if its a change or not
+                    // check if its a change or not
                     var syncChange = new SyncAuthUserWithChange(authenticationUser, authUser);
+
+                    // The two are different so add to the result
                     if (syncChange.FoundChangeType == SyncAuthUserChangeTypes.Update)
-                        //The two are different so add to the result
                         result.Add(syncChange);
-                    //Removed the authUser as has been handled
+
+                    // Removed the authUser as has been handled
                     authUserDictionary.Remove(authenticationUser.UserId);
                 }
                 else
                 {
-                    //A new AuthUser should be created
+                    // A new AuthUser should be created
                     result.Add(new SyncAuthUserWithChange(authenticationUser, null));
                 }
             }
@@ -429,35 +478,50 @@ namespace AuthPermissions.AdminCode.Services
         /// <param name="userName">name/email of the user</param>
         /// <returns></returns>
         /// <exception cref="NotImplementedException"></exception>
-        private async Task<IStatusGeneric<List<RoleToPermissions>>> FindCheckRolesAreValidForUserAsync(List<string> roleNames, Tenant usersTenant, string userName)
+        private async Task<IStatusGeneric<List<RoleToPermissions>>> FindCheckRolesAreValidForUserAsync(List<string> roleNames,
+                                                                                                       Tenant usersTenant,
+                                                                                                       string userName)
         {
+            // Create the Master status
             var status = new StatusGenericHandler<List<RoleToPermissions>>();
 
+            // If the past list of roles is not empty, load a list of RoleToPermissions from
+            //  the db for the passed roles.
+            // Otherwise, create an empty list
             var foundRoles = roleNames?.Any() == true
                 ? await _context.RoleToPermissions
                     .Where(x => roleNames.Contains(x.RoleName))
                     .ToListAsync()
                 : new List<RoleToPermissions>();
+
+            // If we didn't find a RoleToPermissions record for each of the passed roles...
             if (foundRoles.Count != (roleNames?.Count ?? 0))
             {
+                // Create and error string in Master status of each of the missing roles
                 foreach (var badRoleName in roleNames.Where(x => !foundRoles.Select(y => y.RoleName).Contains(x)))
                     status.AddError($"The Role '{badRoleName}' was not found in the lists of Roles.");
             }
 
             //Check that the Roles are allowed for this user
+            // Interate through the RoleTo Permissions list...
             foreach (var foundRole in foundRoles)
             {
+                // If we are trying to add a TenantAdminAdd role to a null Temant, add an error string to Master status
                 if (usersTenant == null && foundRole.RoleType == RoleTypes.TenantAdminAdd)
                     status.AddError($"The role '{foundRole.RoleName}' isn't allowed to a non-tenant user.");
 
+                // If we are trying to add a HiddenFromTenant role to a non-null Temant, add an error string to Master status
                 if (usersTenant != null && foundRole.RoleType == RoleTypes.HiddenFromTenant)
                     status.AddError($"The role '{foundRole.RoleName}' isn't allowed to tenant user.");
-                
+
+                // If we are trying to add a TenantAdminAdd role to a non-null Temant and the Tenant's TenantRoles
+                // does not contain the role, add an error string to Master status
                 if (usersTenant != null && foundRole.RoleType == RoleTypes.TenantAdminAdd
                     && !usersTenant.TenantRoles.Contains(foundRole))
                     status.AddError($"The role '{foundRole.RoleName}' wasn't found in the tenant '{usersTenant.TenantFullName}' tenant roles.");
             }
 
+            // Return the list of Role2Permissions in Master status.Result
             status.SetResult(foundRoles);
             return status;
         }

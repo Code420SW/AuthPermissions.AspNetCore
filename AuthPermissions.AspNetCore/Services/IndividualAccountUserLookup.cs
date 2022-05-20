@@ -36,7 +36,10 @@ namespace AuthPermissions.AspNetCore.Services
         /// <returns>a class containing a UserIf and UserName property, or null if not found</returns>
         public async Task<FindUserInfoResult> FindUserInfoAsync(string uniqueName)
         {
+            // Get the user's IdentityUser record based on the user name
             var user = await _userManager.FindByNameAsync(uniqueName);
+
+            // Package the user Id and name in a FindUserInfoResult.
             return (user == null ? null : new FindUserInfoResult(user.Id, user.UserName));
         }
     }

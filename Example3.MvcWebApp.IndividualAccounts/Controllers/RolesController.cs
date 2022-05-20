@@ -22,7 +22,11 @@ namespace Example3.MvcWebApp.IndividualAccounts.Controllers
         [HasPermission(Example3Permissions.RoleRead)]
         public async Task<IActionResult> Index(string message)
         {
+            // Get the user Id from the User record
             var userId = User.GetUserIdFromUser();
+
+            // Build a list of RoleToPermissionNamesDto records that are valid
+            // for the tenant and then order the list.
             var permissionDisplay = await
                 _authRolesAdmin.QueryRoleToPermissions(userId)
                     .OrderBy(x => x.RoleType)  

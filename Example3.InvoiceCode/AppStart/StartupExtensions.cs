@@ -16,6 +16,10 @@ namespace Example3.InvoiceCode.AppStart
         public static void RegisterExample3Invoices(this IServiceCollection services, IConfiguration configuration)
         {
             //Register any services in this project
+            // This finds all the public, non-generic, non-nested classes in an assembly in
+            //     the provided assemblies. If no assemblies provided then it scans the assembly
+            //     that called the method
+            // By default, AsPublicImplementedInterfaces registers them as Transient
             services.RegisterAssemblyPublicNonGenericClasses()
                 .Where(c => c.Name.EndsWith("Service"))  //optional
                 .AsPublicImplementedInterfaces();

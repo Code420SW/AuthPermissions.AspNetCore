@@ -29,9 +29,11 @@ namespace Example3.InvoiceCode.AppStart
         public Invoice CreateRandomInvoice(string companyName, string invoiceName = null)
         {
             //thanks to https://stackoverflow.com/questions/29482/how-can-i-cast-int-to-enum
+            // Select one of the ExampleInvoiceTypes from the enum (defined above)
             var invoiceType = (ExampleInvoiceTypes)Enum.ToObject(typeof(ExampleInvoiceTypes), 
                 _random.Next(0, ((int)ExampleInvoiceTypes.Travel)+1));
 
+            // Create a sample invoice
             return CreateExampleInvoice(invoiceType, invoiceName ?? invoiceType.ToString(), companyName);
         }
 

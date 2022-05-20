@@ -42,6 +42,7 @@ namespace Example3.InvoiceCode.EfCoreCode
         /// <returns>Returns null if all OK, otherwise the create is rolled back and the return string is shown to the user</returns>
         public async Task<string> CreateNewTenantAsync(Tenant tenant)
         {
+            // Create a new Company Tenant and save to the db
             var newCompanyTenant = new CompanyTenant
             {
                 DataKey = tenant.GetTenantDataKey(),
@@ -71,15 +72,30 @@ namespace Example3.InvoiceCode.EfCoreCode
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             try
             {
+                // Get the DataKey for the passed tenant
                 var dataKey = tenant.GetTenantDataKey();
+
+                // Create/execute the SQL statement to delete all invoice line items
                 var deleteSalesSql = $"DELETE FROM invoice.{nameof(InvoicesDbContext.LineItems)} WHERE DataKey = '{dataKey}'";
                 await _context.Database.ExecuteSqlRawAsync(deleteSalesSql);
+
+                // // Create/execute the SQL statement to delete all invoices
                 var deleteStockSql = $"DELETE FROM invoice.{nameof(InvoicesDbContext.Invoices)} WHERE DataKey = '{dataKey}'";
                 await _context.Database.ExecuteSqlRawAsync(deleteStockSql);
 
+                // Get the CompanyTenant for the passed Tenant.Idfrom the db 
                 var companyTenant = await _context.Set<CompanyTenant>()
+
+                    // Specifies that the current Entity Framework LINQ query should not have any model-level entity query filters applied.
                     .IgnoreQueryFilters()
+
+                    // Asynchronously returns the only element of a sequence that satisfies a specified
+                    //     condition or a default value if no such element exists; this method throws an
+                    //     exception if more than one element satisfies the condition.
                     .SingleOrDefaultAsync(x => x.AuthPTenantId == tenant.TenantId);
+
+                // If we found the CompanyTenant, remove it from the db
+                // Remember the deleted TenantId in the instance variable
                 if (companyTenant != null)
                 {
                     _context.Remove(companyTenant);
@@ -87,6 +103,7 @@ namespace Example3.InvoiceCode.EfCoreCode
                     DeletedTenantId = tenant.TenantId;
                 }
 
+                // Commit all db changes
                 await transaction.CommitAsync();
             }
             catch (Exception e)
@@ -106,9 +123,18 @@ namespace Example3.InvoiceCode.EfCoreCode
         /// <returns>Returns null if all OK, otherwise the tenant name is rolled back and the return string is shown to the user</returns>
         public async Task<string> SingleTenantUpdateNameAsync(Tenant tenant)
         {
+            // Get the CompanyTenant record for the passed Tenant from the db
             var companyTenant = await _context.Companies
+
+                // Specifies that the current Entity Framework LINQ query should not have any model-level entity query filters applied.
                 .IgnoreQueryFilters()
+
+                // Asynchronously returns the only element of a sequence that satisfies a specified
+                //     condition or a default value if no such element exists; this method throws an
+                //     exception if more than one element satisfies the condition.
                 .SingleOrDefaultAsync(x => x.AuthPTenantId == tenant.TenantId);
+
+            // If we found the CompantTenant, change its name and save to the db
             if (companyTenant != null)
             {
                 companyTenant.CompanyName = tenant.TenantFullName;

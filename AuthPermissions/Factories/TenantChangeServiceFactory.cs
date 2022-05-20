@@ -32,12 +32,16 @@ namespace AuthPermissions.SetupCode.Factories
         /// <returns>The service, or null </returns>
         public ITenantChangeService GetService(bool throwExceptionIfNull = true, string callingMethod = "")
         {
+            // Find the registered service from the DI
             var service = (ITenantChangeService)_serviceProvider.GetService(typeof(ITenantChangeService));
+
+            // If not found, throw
             if (service == null && throwExceptionIfNull)
                 throw new AuthPermissionsException(
                     $"A service (method {callingMethod}) needed the {nameof(ITenantChangeService)} service, but you haven't registered it." +
                     $"You can do this using the {nameof(RegisterExtensions.RegisterTenantChangeService)} configuration method.");
 
+            // Return the service
             return service;
         }
     }

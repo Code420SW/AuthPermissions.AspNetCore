@@ -58,13 +58,22 @@ namespace ExamplesCommonCode.CommonAdmin
         public static async Task<IStatusGeneric<SetupManualUserChange>> PrepareForUpdateAsync(string userId,
             IAuthUsersAdminService authUsersAdmin)
         {
+            // This is the master status returned by the function
             var status = new StatusGenericHandler<SetupManualUserChange>();
+
+            // Get the AuthUser info, including roles and tenant info, from the db
+            // Status/Results captured in its own AuthUser status
             var authUserStatus = await authUsersAdmin.FindAuthUserByUserIdAsync(userId);
+
+            // Coalesce errors with the master status and bail on errors
             if (status.CombineStatuses(authUserStatus).HasErrors)
                 return status;
 
+            // Extract the results from the AuthUser status
             var authUser = authUserStatus.Result;
 
+            // Create a new SetupManualUserChange record for the AuthUser
+            // Set the change type to Update for future db calls
             var result = new SetupManualUserChange
             {
                 FoundChangeType = SyncAuthUserChangeTypes.Update,
@@ -74,8 +83,11 @@ namespace ExamplesCommonCode.CommonAdmin
                 RoleNames = authUser.UserRoles.Select(x => x.RoleName).ToList(),
                 TenantName = authUser.UserTenant?.TenantFullName,
             };
+
+            // This call populates the record's AllRoleName and AllTenantName properties
             await result.SetupDropDownListsAsync(authUsersAdmin);
 
+            // Set the result property of the master status record
             return status.SetResult(result);
         }
 

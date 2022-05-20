@@ -27,9 +27,13 @@ namespace Example3.MvcWebApp.IndividualAccounts.Controllers
         {
             ViewBag.Message = message;
 
+            // Get a IQueryable<Invoice> from the db and pass it to the InvoiceSummaryDto
+            // that returns an IQueryable<InvoiceSummaryDto>
             var listInvoices = await InvoiceSummaryDto.SelectInvoices(_context.Invoices)
                 .OrderByDescending(x => x.DateCreated)
                 .ToListAsync();
+
+
             return View(listInvoices);
         }
 
@@ -44,8 +48,15 @@ namespace Example3.MvcWebApp.IndividualAccounts.Controllers
         [HasPermission(Example3Permissions.InvoiceCreate)]
         public async Task<IActionResult> CreateInvoice(Invoice invoice)
         {
+            // Create the Invoice Builder class
             var builder = new ExampleInvoiceBuilder(null);
+
+            // Create a sample invoice.
+            // Extract the tenant name from the user claims
+            // Pass thru the InvoiceName parameter of the pass in Invoice
             var newInvoice = builder.CreateRandomInvoice(AddTenantNameClaim.GetTenantNameFromUser(User), invoice.InvoiceName);
+
+            // Save the invoice to the db
             _context.Add(newInvoice);
             await _context.SaveChangesAsync();
 

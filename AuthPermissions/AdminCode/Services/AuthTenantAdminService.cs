@@ -134,46 +134,67 @@ namespace AuthPermissions.AdminCode.Services
         public async Task<IStatusGeneric> AddSingleTenantAsync(string tenantName, List<string> tenantRoleNames = null,
             bool? hasOwnDb = null, string databaseInfoName = null)
         {
+            // Create the Master status and preset the message
             var status = new StatusGenericHandler { Message = $"Successfully added the new tenant {tenantName}." };
 
+            // Make sure the tenant type is consistent with the function's purpose
             if (!_tenantType.IsSingleLevel())
                 throw new AuthPermissionsException(
                     $"You cannot add a single tenant because the tenant configuration is {_tenantType}");
 
+            // Find the ITenantChangeService registered in the DI.
+            // Procedure will throw if nothing found.
             var tenantChangeService = _tenantChangeServiceFactory.GetService();
 
+            // Begin a transaction...
             await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             try
             {
+                // Build a list of RoleToPermissions for the past list of roles
                 var tenantRolesStatus = await GetRolesWithChecksAsync(tenantRoleNames);
+
+                // Combine the results into Master status
                 status.CombineStatuses(tenantRolesStatus);
+
+                // Try to create the new Tenant
+                // *** The tenant is stored in the Result parameter ***
                 var newTenantStatus = Tenant.CreateSingleTenant(tenantName, tenantRolesStatus.Result);
 
+                // Combine the status into Master status and return if any errors
                 if (status.CombineStatuses(newTenantStatus).HasErrors)
                     return status;
 
+                // If we are using sharding...
                 if (_tenantType.IsSharding())
                 {
+                    // Error-check the passed hasOwnDb is set correctly
                     if (hasOwnDb == null)
                         status.AddError($"The {nameof(hasOwnDb)} parameter must be set to true or false when sharding is turned on.",
                             nameof(hasOwnDb).CamelToPascal());
+                    // Otherwise, make sure another tenant isn't using the same db
                     else
                         status.CombineStatuses(await CheckHasOwnDbIsValidAsync((bool)hasOwnDb, databaseInfoName));
 
+                    // Bail if any errors so far
                     if (status.HasErrors)
                         return status;
 
+                    // Update the Tenant's sharding parameters
                     newTenantStatus.Result.UpdateShardingState(
                         databaseInfoName ?? _options.ShardingDefaultDatabaseInfoName,
                         (bool)hasOwnDb);
                 }
 
+                // Save the new Tenant to the db
                 _context.Add(newTenantStatus.Result);
                 status.CombineStatuses(await _context.SaveChangesWithChecksAsync());
 
+                // Bail on any errors (triggers a rollback)
                 if (status.HasErrors)
                     return status;
 
+                // Using the service found above...
+                // Call the application-specific procedure to do application-specific stuff
                 var errorString = await tenantChangeService.CreateNewTenantAsync(newTenantStatus.Result);
                 if (errorString != null)
                     return status.AddError(errorString);
@@ -686,12 +707,18 @@ namespace AuthPermissions.AdminCode.Services
         /// <returns>status</returns>
         private async Task<IStatusGeneric> CheckHasOwnDbIsValidAsync(bool hasOwnDb, string databaseInfoName)
         {
+            // Create the Master status
             var status = new StatusGenericHandler();
+
+            // Nothing to do if the tenant doen't have its own db
             if (!hasOwnDb)
                 return status;
 
+            // Set the passed databaseInfoName to the default if null
             databaseInfoName ??= _options.ShardingDefaultDatabaseInfoName;
 
+            // Check the db to see if any existing tenant is using the same datanbaseInfoName
+            // If so, add and error message to Master status
             if (await _context.Tenants.AnyAsync(x => x.DatabaseInfoName == databaseInfoName))
                 status.AddError(
                     $"The {nameof(hasOwnDb)} parameter is true, but the sharding database name " +
@@ -709,8 +736,12 @@ namespace AuthPermissions.AdminCode.Services
         private async Task<IStatusGeneric<List<RoleToPermissions>>> GetRolesWithChecksAsync(
             List<string> tenantRoleNames)
         {
+            // Create the Master status
             var status = new StatusGenericHandler<List<RoleToPermissions>>();
 
+            // If the passed tenantRoleNames has members...
+            // Query the db and build a list of RoleToPermissions records matching the passed role names
+            // Otherwise...return an empty list
             var foundRoles = tenantRoleNames?.Any() == true
                 ? await _context.RoleToPermissions
                     .Where(x => tenantRoleNames.Contains(x.RoleName))
@@ -718,14 +749,17 @@ namespace AuthPermissions.AdminCode.Services
                     .ToListAsync()
                 : new List<RoleToPermissions>();
 
+            // If a RoleToPermission record was NOT found for each role passed in tenantRoleNames...
             if (foundRoles.Count != (tenantRoleNames?.Count ?? 0))
             {
+                // Find the missing roles and add and error message to the Master status
                 foreach (var badRoleName in tenantRoleNames.Where(x => !foundRoles.Select(y => y.RoleName).Contains(x)))
                 {
                     status.AddError($"The Role '{badRoleName}' was not found in the lists of Roles.");
                 }
             }
 
+            // Return the list of RoleToPermissions in the Master status.Result
             return status.SetResult(foundRoles);
         }
     }

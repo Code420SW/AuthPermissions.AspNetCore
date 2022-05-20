@@ -57,36 +57,44 @@ public class UserRegisterInviteService : IUserRegisterInviteService
     /// <returns>Status with the individual accounts user</returns>
     public async Task<IStatusGeneric<IdentityUser>> AddUserAndNewTenantAsync(CreateTenantDto dto)
     {
+        // Create the Master status and preset the message
         var status = new StatusGenericHandler<IdentityUser>
         {
             Message =
                 $"Successfully created the tenant called '{dto.TenantName}' and registered you as the tenant admin"
         };
 
+        // Get the enum value for the dto.Version type
         var tenantVersion = dto.GetTenantVersionType();
 
+        // Chexk for errors and throw
         if (tenantVersion == TenantVersionTypes.NotSet)
             throw new AuthPermissionsException("The Version string in the dto wasn't set properly");
 
-        //Check if tenant name is available
+        // Check if tenant name is available
+        // Filter a list of all tenants and look for one that is the same as dto.TenantName
+        // If found, add the error to Master status and return
         if (_tenantAdminService.QueryTenants().Any(x => x.TenantFullName == dto.TenantName))
             return status.AddError($"The tenant name '{dto.TenantName}' is already taken", new []{nameof(CreateTenantDto.TenantName) });
 
-        //Add a new individual users account user, or return existing user
-        //Will sent back error if already an AuthUser, because a user can't be linked to multiple tenants
+        // Add a new individual users account user (IdentityUser), or return existing user
+        // Will sent back error if already an AuthUser, because a user can't be linked to multiple tenants
         var userStatus = await GetIndividualAccountUserAndCheckNotAuthUser(dto.Email, dto.Password);
+
+        // If errors, merge them into Master status and return
         if (status.CombineStatuses(userStatus).HasErrors)
             return status;
 
-        //Now we can create the tenant, with the correct tenant roles
+        // Now we can create the tenant, with the correct tenant roles
         var tenantStatus = await _tenantAdminService.AddSingleTenantAsync(dto.TenantName, _rolesToAddTenantForVersion[tenantVersion]);
         if (status.CombineStatuses(tenantStatus).HasErrors)
             return status;
 
-        //This creates a user, with the roles suitable for the version of the version of the app
+        // This creates a user, with the roles suitable for the version of the version of the app
         status.CombineStatuses(await _authUsersAdmin.AddNewUserAsync(userStatus.Result.Id, dto.Email, null,
             _rolesToAddUserForVersions[dto.GetTenantVersionType()], dto.TenantName));
 
+        // Return the IdentityUser record in Master status.Result
         status.SetResult(userStatus.Result);
 
         return status;
@@ -119,14 +127,17 @@ public class UserRegisterInviteService : IUserRegisterInviteService
     /// <returns>Status with the individual accounts user</returns>
     public async Task<IStatusGeneric<IdentityUser>> AcceptUserJoiningATenantAsync(string email, string password, string inviteParam)
     {
+        // Craete Master status
         var status = new StatusGenericHandler<IdentityUser>();
 
         int tenantId;
         string emailOfJoiner;
         try
         {
+            // Decrypt the passed inviteParam
             var decrypted = _encryptorService.Decrypt(Base64UrlEncoder.Decode(inviteParam));
 
+            // Whatever it is contains twp parts separated by comma
             var parts = decrypted.Split(',');
             tenantId = int.Parse(parts[0]);
             emailOfJoiner = parts[1].Trim();
@@ -137,17 +148,24 @@ public class UserRegisterInviteService : IUserRegisterInviteService
             return status.AddError("Sorry, the verification failed.");
         }
 
+        // Compare the email extracted from the inviteParam to the email entered by the user...mist match
         if (emailOfJoiner != email.Trim())
             return status.AddError("Sorry, your email didn't match the invite.");
 
+        // Get the Tenant record for the tenantId extracted from inviteParam
         var tenant = await _tenantAdminService.QueryTenants()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId);
+
+        // Handle not found error
         if (tenant == null)
             return status.AddError("Sorry, your invite is rejected. Please talk to your admin person.");
 
         //Add a new individual users account user, or return existing user
         //Will sent back error if already an AuthUser, because a user can't be linked to multiple tenants
+        // Do a bunch of error-checking and return the IdentityUser new/existing record in userStatus.Result
         var userStatus = await GetIndividualAccountUserAndCheckNotAuthUser(email, password);
+
+        // Bail if errors
         if (status.CombineStatuses(userStatus).HasErrors)
             return status;
 
@@ -155,9 +173,11 @@ public class UserRegisterInviteService : IUserRegisterInviteService
         status.CombineStatuses(await _authUsersAdmin.AddNewUserAsync(userStatus.Result.Id, email, null,
             new List<string> { "Tenant User" }, tenant.TenantFullName));
 
+        // Bail if errors
         if (status.HasErrors)
             return status;
 
+        // Return the new/existing IdentityUser record in Master status.Result
         status.SetResult(userStatus.Result);
         status.Message = $"You have successfully joined the tenant '{tenant.TenantFullName}'";
         return status;
@@ -168,25 +188,44 @@ public class UserRegisterInviteService : IUserRegisterInviteService
 
     private async Task<IStatusGeneric<IdentityUser>> GetIndividualAccountUserAndCheckNotAuthUser(string email, string password)
     {
+        // Create the Master status 
         var status = new StatusGenericHandler<IdentityUser>();
 
+        // Query UserMananger for a user with the passed email
+        // ONLY CHECKING AUTHENTICATION
         var user = await _userManager.FindByEmailAsync(email);
+
+        // If a user was not found...
         if (user == null)
         {
+            // Build the IdentityUser record and create a Usermanager record
             user = new IdentityUser { UserName = email, Email = email };
             var result = await _userManager.CreateAsync(user, password);
+
+            // Check IdentityResult and if the cretion process failed...
             if (!result.Succeeded)
             {
+                // Extract all IdentityResult error to a list and then iterate over the list to create
+                // and error message in Master status
                 result.Errors.Select(x => x.Description).ToList().ForEach(error => status.AddError(error));
             }
         }
+
+        // Otherwise, we found the user...
+        // Verify the email/password match.
+        // If they don't, add an error message to Master status
         else if(!await _userManager.CheckPasswordAsync(user, password))
             status.AddError("The user was already known, but the password was wrong.");
 
-        //Check if user is already in the AuthUsers (because a AuthUser can only be linked to one tenant)
+
+        // NOW CHECK AUTHORIZATION.....
+        // Check if user is already in the AuthUsers (because a AuthUser can only be linked to one tenant)
+        // If the user is found, the AuthUser record is returned in status.Result
+        // If the user WAS found, create and error meaasge in Master status
         if ((await _authUsersAdmin.FindAuthUserByEmailAsync(email)).Result != null)
             status.AddError("You are already registered as a user, which means you can't ask to access another tenant.");
 
+        // Return the authentication (IdentityUser) record (will not be null) through status.Result
         return status.SetResult(user);
     }
 }

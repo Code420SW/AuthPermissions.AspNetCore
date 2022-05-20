@@ -47,8 +47,12 @@ namespace AuthPermissions.BaseCode.DataLayer.Classes
         /// <see cref="RoleTypes.TenantAutoAdd"/> or <see cref="RoleTypes.TenantAdminAdd"/></param>
         public static IStatusGeneric<Tenant> CreateSingleTenant(string fullTenantName, List<RoleToPermissions> tenantRoles = null)
         {
+            // Build the Tenant record
             var newInstance = new Tenant(fullTenantName, false);
+
+            // Validate the passed list of roles for the tenant and save in the Tenant record
             var status = CheckRolesAreAllTenantRolesAndSetTenantRoles(tenantRoles, newInstance);
+
             return status;
         }
 
@@ -280,13 +284,20 @@ namespace AuthPermissions.BaseCode.DataLayer.Classes
         /// <returns>status, with the <see param="thisTenant"/> instance if no errors.</returns>
         private static IStatusGeneric<Tenant> CheckRolesAreAllTenantRolesAndSetTenantRoles(List<RoleToPermissions> tenantRoles, Tenant thisTenant)
         {
+            // Build the Master status
             var status = new StatusGenericHandler<Tenant>();
+
+            // Save the passed Tenant record in Master status.Result
             status.SetResult(thisTenant);
 
+            // Build a list of RoleToPermissions containing all the passed RoleToPermissions that are NOT TenantAutoAdd or TenantAdminAdd
+            // If none are found, return a empty list
             var badRoles = tenantRoles?
                 .Where(x => x.RoleType != RoleTypes.TenantAutoAdd && x.RoleType != RoleTypes.TenantAdminAdd)
                 .ToList() ?? new List<RoleToPermissions>();
 
+
+            // Iterate through the list of bad roles and add an error message to Master status
             foreach (var badRole in badRoles)
             {
                 status.AddError(
@@ -294,10 +305,14 @@ namespace AuthPermissions.BaseCode.DataLayer.Classes
                     $"{nameof(RoleTypes.TenantAutoAdd)} or {nameof(RoleTypes.TenantAdminAdd)} can be added to a tenant.");
             }
 
+            // Check for errors and a null list of RoleToPermissions
             if (status.HasErrors || tenantRoles == null)
                 return status; 
             
+            // Save the roles
             thisTenant._tenantRoles = new HashSet<RoleToPermissions>(tenantRoles);
+
+            // Return the Master status
             return status;
         }
 
