@@ -75,9 +75,14 @@ namespace AuthPermissions.AdminCode.Services
         /// <returns></returns>
         public List<PermissionDisplay> GetPermissionDisplay(bool excludeFilteredPermissions, string groupName = null)
         {
+            // This returns all the enum permission names with the various display attribute data
+            // NOTE: It does not show enum names that
+            // a) don't have an <see cref="DisplayAttribute"/> on them. They are assumed to not 
+            // b) Which have a <see cref="ObsoleteAttribute"/> applied to that name
             var allPermissions = PermissionDisplay
                 .GetPermissionsToDisplay(_permissionType, excludeFilteredPermissions);
 
+            // If needed, filter the list of PermissionDisplay to include only the passed groupName
             return groupName == null
                 ? allPermissions
                 : allPermissions.Where(x => x.GroupName == groupName).ToList();
@@ -112,31 +117,44 @@ namespace AuthPermissions.AdminCode.Services
         /// <param name="roleType">Optional: defaults to <see cref="RoleTypes.Normal"/></param>
         /// <returns>A status with any errors found</returns>
         public async Task<IStatusGeneric> CreateRoleToPermissionsAsync(string roleName,
-            IEnumerable<string> permissionNames,
-            string description, RoleTypes roleType = RoleTypes.Normal)
+                                                                       IEnumerable<string> permissionNames,
+                                                                       string description,
+                                                                       RoleTypes roleType = RoleTypes.Normal)
         {
+            // Create the Master status
             var status = new StatusGenericHandler { Message = $"Successfully added the new role {roleName}." };
 
+            // Error-check the passed roleName
             if (string.IsNullOrEmpty(roleName))
                 return status.AddError("The RoleName isn't filled in", nameof(roleName).CamelToPascal());
+
+            // Try to read the role from the db. If found, throw an error.
             if ((await _context.RoleToPermissions.SingleOrDefaultAsync(x => x.RoleName == roleName)) != null)
                 return status.AddError($"There is already a Role with the name of '{roleName}'.", nameof(roleName).CamelToPascal());
             
+            // Error-check the passed permissionNames
             if (permissionNames == null)
                 return status.AddError("You must provide at least one permission name.", nameof(permissionNames).CamelToPascal());
 
-            //NOTE: If an advanced permission (i.e. has the display attribute has AutoGenerateFilter = true) is found the roleType is updated to HiddenFromTenant
+            // NOTE: If an advanced permission (i.e. has the display attribute has AutoGenerateFilter = true) is found
+            // the roleType is updated to HiddenFromTenant
+            //
+            // This converts a list of enum permission names into a packed string. If any permission names are bad it calls the reportError action
             var packedPermissions = _permissionType.PackPermissionsNamesWithValidation(permissionNames,
                 x => status.AddError(
                     $"The permission name '{x}' isn't a valid name in the {_permissionType.Name} enum.",
-                    nameof(permissionNames).CamelToPascal()), () => roleType = RoleTypes.HiddenFromTenant);
+                    nameof(permissionNames).CamelToPascal()), 
+                () => roleType = RoleTypes.HiddenFromTenant);
 
+            // Bail on errors
             if (status.HasErrors)
                 return status;
 
+            // Error-check the resulting packedPermissions
             if (!packedPermissions.Any())
                 return status.AddError("You must provide at least one permission name.", nameof(permissionNames).CamelToPascal());
 
+            // Add the new role to the db and merge any errors into Master status
             _context.Add(new RoleToPermissions(roleName, description, packedPermissions, roleType));
             status.CombineStatuses(await _context.SaveChangesWithChecksAsync());
 
@@ -154,17 +172,24 @@ namespace AuthPermissions.AdminCode.Services
         /// NOTE: the roleType is changed to <see cref="RoleTypes.HiddenFromTenant"/> if advanced permissions are found</param>
         /// <returns>Status</returns>
         public async Task<IStatusGeneric> UpdateRoleToPermissionsAsync(string roleName,
-            IEnumerable<string> permissionNames,
-            string description, RoleTypes roleType = RoleTypes.Normal)
+                                                                       IEnumerable<string> permissionNames,
+                                                                       string description,
+                                                                       RoleTypes roleType = RoleTypes.Normal)
         {
+            // reate the Master status and preset the message
             var status = new StatusGenericHandler { Message = $"Successfully updated the role {roleName}." };
+
+            // Get the RoleToPermissions record for the passed roleName from the db
             var existingRolePermission = await _context.RoleToPermissions.SingleOrDefaultAsync(x => x.RoleName == roleName);
 
+            // If the record was not foune, set the error message and bail
             if (existingRolePermission == null)
                 return status.AddError($"Could not find a role called {roleName}", nameof(roleName).CamelToPascal());
 
+            // Get the RoleType from the RoleToPermisiions record
             var originalRoleType = existingRolePermission.RoleType;
 
+            /// This converts a list of enum permission names into a packed string. If any permission names are bad it calls the reportError action
             var packedPermissions = _permissionType.PackPermissionsNamesWithValidation(permissionNames,
                 x => status.AddError($"The permission name '{x}' isn't a valid name in the {_permissionType.Name} enum.", 
                     nameof(permissionNames).CamelToPascal()), 

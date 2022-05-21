@@ -20,15 +20,27 @@ namespace ExamplesCommonCode.CommonAdmin
 
         public static async Task<MultiTenantRoleDeleteConfirmDto> FormRoleDeleteConfirmDtoAsync(string roleName, IAuthRolesAdminService rolesAdminService)
         {
+            // Create a class instance
             var result = new MultiTenantRoleDeleteConfirmDto
             {
                 RoleName = roleName
             };
+
+            // --- Build a list of users who have the passed roleName --
+            // This returns a query containing all the AuthUser records that have the given role name
+            // And then extract the email and username parameters into a list
+            // This list is then used to create a UserOrTenantDto containing the username or email
+            // and all of these records are saved to MultiTenantRoleDeleteConfirmDto.UsedBy
             result.UsedBy = (await rolesAdminService.QueryUsersUsingThisRole(roleName)
                     .Select(x => new { x.Email, x.UserName })
                     .ToListAsync())
                 .Select(x => new UserOrTenantDto(true, x.UserName ?? x.Email))
                 .ToList();
+
+            // --- Build a list of tenants using the passed roleName ---
+            // This returns a query containing all the Tenants that have given role name
+            // This list is then used to create a UserOrTenantDto containing the yenant name
+            // and all of these records are added to MultiTenantRoleDeleteConfirmDto.UsedBy
             result.UsedBy.AddRange(await rolesAdminService.QueryTenantsUsingThisRole(roleName)
                 .Select(x => new UserOrTenantDto(false, x.TenantFullName))
                 .ToListAsync());

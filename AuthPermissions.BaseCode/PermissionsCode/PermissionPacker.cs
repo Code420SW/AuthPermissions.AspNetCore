@@ -50,25 +50,37 @@ namespace AuthPermissions.BaseCode.PermissionsCode
             IEnumerable<string> permissionNames, Action<string> reportError, Action foundAdvancedPermission)
         {
             var packedPermissions = "";
+
+            // Iterate throght the passed list of permissionNames...
             foreach (var permissionName in permissionNames)
             {
                 try
                 {
+                    // Get the enum value from the enum name
                     Enum.Parse(enumPermissionsType, permissionName);
+
+                    // Determine if this permission has the AutoGenerateFilter Display attribute
+                    // If so, call the passed action
                     var displayAttribute =  enumPermissionsType.GetMember(permissionName)[0].GetCustomAttribute<DisplayAttribute>();
                     if (displayAttribute?.GetAutoGenerateFilter() == true)
                         foundAdvancedPermission();
                 }
                 catch (ArgumentException)
                 {
+                    // For any error, call the passed reportError action
                     reportError(permissionName);
                     continue;
                 }
 
+                // Convert the enum value to a char and add to the string
                 packedPermissions +=
                     (char) Convert.ChangeType(Enum.Parse(enumPermissionsType, permissionName), typeof(char));
             }
+
+            // Last error-check for char(0)
             CheckPackedPermissionsDoesNotContainZeroChar(packedPermissions);
+
+
             return packedPermissions;
         }
 

@@ -36,9 +36,10 @@ public class UserRegisterInviteService : IUserRegisterInviteService
         { TenantVersionTypes.Enterprise, new List<string> { "Tenant Admin", "Enterprise" } },
     };
 
-    public UserRegisterInviteService(IAuthTenantAdminService tenantAdminService, 
-        IAuthUsersAdminService authUsersAdmin, IEncryptDecryptService encryptorService, 
-        UserManager<IdentityUser> userManager)
+    public UserRegisterInviteService(IAuthTenantAdminService tenantAdminService,
+                                     IAuthUsersAdminService authUsersAdmin,
+                                     IEncryptDecryptService encryptorService,
+                                     UserManager<IdentityUser> userManager)
     {
         _tenantAdminService = tenantAdminService;
         _authUsersAdmin = authUsersAdmin;

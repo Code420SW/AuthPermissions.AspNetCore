@@ -90,12 +90,16 @@ namespace AuthPermissions.AdminCode.Services
         /// <returns>Status. If successful, then contains the Tenant</returns>
         public async Task<IStatusGeneric<Tenant>> GetTenantViaIdAsync(int tenantId)
         {
+            // Create the Master status
             var status = new StatusGenericHandler<Tenant>();
 
+            // Get the tenant record from the db
             var result = await _context.Tenants
                 .Include(x => x.Parent)
                 .Include(x => x.TenantRoles)
                 .SingleOrDefaultAsync(x => x.TenantId == tenantId);
+
+            // Handle errors
             return result == null 
                 ? status.AddError("Could not find the tenant you were looking for.") 
                 : status.SetResult(result);
@@ -131,8 +135,10 @@ namespace AuthPermissions.AdminCode.Services
         /// <param name="hasOwnDb">Needed if sharding: Is true if this tenant has its own database, else false</param>
         /// <param name="databaseInfoName">This is the name of the database information in the shardingsettings file.</param>
         /// <returns>A status with any errors found</returns>
-        public async Task<IStatusGeneric> AddSingleTenantAsync(string tenantName, List<string> tenantRoleNames = null,
-            bool? hasOwnDb = null, string databaseInfoName = null)
+        public async Task<IStatusGeneric> AddSingleTenantAsync(string tenantName,
+                                                               List<string> tenantRoleNames = null,
+                                                               bool? hasOwnDb = null,
+                                                               string databaseInfoName = null)
         {
             // Create the Master status and preset the message
             var status = new StatusGenericHandler { Message = $"Successfully added the new tenant {tenantName}." };
@@ -378,27 +384,36 @@ namespace AuthPermissions.AdminCode.Services
         /// <returns></returns>
         public async Task<IStatusGeneric> UpdateTenantNameAsync(int tenantId, string newTenantName)
         {
+            // Craete the Master status with preset message
             var status = new StatusGenericHandler
                 { Message = $"Successfully updated the tenant's name to {newTenantName}." };
 
+            // The new tenant name can't be null
             if (string.IsNullOrEmpty(newTenantName))
                 return status.AddError("The new name was empty", nameof(newTenantName).CamelToPascal());
+
+            // No special characters in the tenant name
             if (newTenantName.Contains('|'))
                 return status.AddError(
                     "The tenant name must not contain the character '|' because that character is used to separate the names in the hierarchical order",
                         nameof(newTenantName).CamelToPascal());
 
+            // Get the user-provided ITenantChangeService
             var tenantChangeService = _tenantChangeServiceFactory.GetService();
 
+            // Begin the transaction...
             using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             try
             {
+                // Get the tenant associated with the passed tenantId from the db
                 var tenant = await _context.Tenants
                     .SingleOrDefaultAsync(x => x.TenantId == tenantId);
 
+                // Bail if the tenant wasn't found
                 if (tenant == null)
                     return status.AddError("Could not find the tenant you were looking for.");
 
+                // If this is an heirarchial tenant...
                 if (tenant.IsHierarchical)
                 {
                     //We need to load the main tenant and any children and this is the simplest way to do that
@@ -408,26 +423,44 @@ namespace AuthPermissions.AdminCode.Services
                         .Where(x => x.TenantFullName.StartsWith(tenant.TenantFullName))
                         .ToListAsync();
 
+                    // Get the tenant record associated with the passed tenantId
                     var existingTenantWithChildren = tenantsWithChildren
                         .Single(x => x.TenantId == tenantId);
 
+                    // This updates the tenant name and the TenantFullName for this tenant 
+                    // and all its children
                     existingTenantWithChildren.UpdateTenantName(newTenantName);
+
+                    // This is not defined in Example3.InvoiceCode.EfCoreCode: InvoiceTenantChangeService
+                    // and will throw.
                     await tenantChangeService.HierarchicalTenantUpdateNameAsync(tenantsWithChildren);
                 }
+
+                // Otherwise (not a heirarchial tenant),
                 else
                 {
+                    // This updates the tenant name and the TenantFullName for this tenant
                     tenant.UpdateTenantName(newTenantName);
 
+                    // This is called when the name of your Tenants is changed. This is useful if you use the tenant name in your multi-tenant data.
+                    // NOTE: The created application's DbContext won't have a DataKey, so you will need to use IgnoreQueryFilters on any EF Core read
                     var errorString = await tenantChangeService.SingleTenantUpdateNameAsync(tenant);
+
+                    // Handle errors
                     if (errorString != null)
                         return status.AddError(errorString);
                 }
 
+                // Save the changes to the db and capture errors
                 status.CombineStatuses(await _context.SaveChangesWithChecksAsync());
 
+                // Commit the transaction if all is well
+                // Otherwise we fall out of the try block which will invalidate the transaction
                 if (status.IsValid)
                     await transaction.CommitAsync();
             }
+
+            // Any exceptions will void the transaction
             catch (Exception e)
             {
                 if (_logger == null)
@@ -437,6 +470,8 @@ namespace AuthPermissions.AdminCode.Services
                 return status.AddError(
                     "The attempt to delete a tenant failed with a system error. Please contact the admin team.");
             }
+
+            // All went well, set the message in Master status
             status.Message = $"Successfully updated the tenant name to '{newTenantName}'.";
 
             return status;
@@ -528,21 +563,29 @@ namespace AuthPermissions.AdminCode.Services
         /// <returns>Status returning the <see cref="ITenantChangeService"/> service, in case you want copy the delete data instead of deleting</returns>
         public async Task<IStatusGeneric<ITenantChangeService>> DeleteTenantAsync(int tenantId)
         {
+            // Create the Master status
             var status = new StatusGenericHandler<ITenantChangeService>();
+
             string message;
 
+            // Find our registered ITenantChangeService (Example3.InvoiceCode.EfCoreCode: InvoiceTenantChangeService)
+            // And store it in Master status.Result
             var tenantChangeService = _tenantChangeServiceFactory.GetService();
             status.SetResult(tenantChangeService);
 
+            // Begin the transaction...
             using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             try
             {
+                // Get the tenant record to delete from the db
                 var tenantToDelete = await _context.Tenants
                     .SingleOrDefaultAsync(x => x.TenantId == tenantId);
 
+                // Bail if not found
                 if (tenantToDelete == null)
                     return status.AddError("Could not find the tenant you were looking for.");
 
+                // Build a list of tenant IDs that are associated with the tenant to be deleted
                 var allTenantIdsAffectedByThisDelete = await _context.Tenants
                     .Include(x => x.Parent)
                     .Include(x => x.Children)
@@ -550,11 +593,14 @@ namespace AuthPermissions.AdminCode.Services
                     .Select(x => x.TenantId)
                     .ToListAsync();
 
+                // Build a list of user emails who are associated with the tenant to be deleted
                 var usersOfThisTenant = await _context.AuthUsers
                     .Where(x => allTenantIdsAffectedByThisDelete.Contains(x.TenantId ?? 0))
                     .Select(x => x.UserName ?? x.Email)
                     .ToListAsync();
-
+                
+                // If the tenant to be deleted or any of its children have users,
+                // build a series of error messages.
                 var tenantOrChildren = allTenantIdsAffectedByThisDelete.Count > 1
                     ? "tenant or its children tenants are"
                     : "tenant is";
@@ -563,11 +609,17 @@ namespace AuthPermissions.AdminCode.Services
                         status.AddError(
                             $"This delete is aborted because this {tenantOrChildren} linked to the user '{x}'."));
 
+                // Bail on errors
                 if (status.HasErrors)
                     return status;
 
+                // Set the Master status message
                 message = $"Successfully deleted the tenant called '{tenantToDelete.TenantFullName}'";
 
+
+                // At this point whe have a list of tenants and children with which no users are associated
+                //
+                // If this is a heirarchial tenant...
                 if (tenantToDelete.IsHierarchical)
                 {
                     //need to delete all the tenants that starts with the main tenant DataKey
@@ -577,9 +629,12 @@ namespace AuthPermissions.AdminCode.Services
                         .ToListAsync())
                         .OrderByDescending(x => x.GetTenantDataKey().Count(y => y == '.'))
                         .ToList();
+
                     //Now we add the parent as the last
                     tenantsInOrder.Add(tenantToDelete);
 
+                    // This is not defined in Example3.InvoiceCode.EfCoreCode: InvoiceTenantChangeService
+                    // Will throw
                     var childError = await tenantChangeService.HierarchicalTenantDeleteAsync(tenantsInOrder);
                     if (childError != null)
                         return status.AddError(childError);
@@ -590,20 +645,38 @@ namespace AuthPermissions.AdminCode.Services
                         message += $" and its {tenantsInOrder.Count} linked tenants";
                     }
                 }
+
+                // Otherwise this is a single-level tenant...
                 else
                 {
                     //delete the tenant that the user defines
+                    // This is used with single-level tenant to either
+                    // a) delete all the application-side data with the given DataKey, or
+                    // b) soft-delete the data.
+                    // You should apply multiple changes within a transaction so that if any fails then any previous changes will be rolled back
+                    // Notes:
+                    // - The created application's DbContext won't have a DataKey, so you will need to use IgnoreQueryFilters on any EF Core read
+                    // - You can provide information of what you have done by adding public parameters to this class.
+                    //   The TenantAdmin <see cref="AuthTenantAdminService.DeleteTenantAsync"/> method returns your class on a successful Delete
                     var mainError = await tenantChangeService.SingleTenantDeleteAsync(tenantToDelete);
+
+                    // Bail on errors. This will void the transaction.
                     if (mainError != null)
                         return status.AddError(mainError);
+
+                    // Mark the tenant for deletion
                     _context.Remove(tenantToDelete);
                 }
 
+                // Prepare to save changes to the db
                 status.CombineStatuses(await _context.SaveChangesWithChecksAsync());
 
+                // If everything has gone well, Commit the transaction
                 if (status.IsValid)
                     await transaction.CommitAsync();
             }
+
+            // Any exceptions will void the transaction
             catch (Exception e)
             {
                 if (_logger == null)

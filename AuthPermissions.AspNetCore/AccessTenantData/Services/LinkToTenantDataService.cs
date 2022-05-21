@@ -55,30 +55,43 @@ public class LinkToTenantDataService : ILinkToTenantDataService
     /// <exception cref="AuthPermissionsException"></exception>
     public async Task<IStatusGeneric> StartLinkingToTenantDataAsync(string currentUserId, int tenantId)
     {
+        // Craete the Master status
         var status = new StatusGenericHandler();
 
+        // Error-checking
         if (_options.LinkToTenantType == LinkToTenantTypes.NotTurnedOn)
             throw new AuthPermissionsException(
                 $"You must set up the {nameof(AuthPermissionsOptions.LinkToTenantType)} to use the Access Tenant Data feature.");
 
+        // Get the AuthUser record for the passed currentUserId
         var user = await _context.AuthUsers.SingleOrDefaultAsync(x => x.UserId == currentUserId);
+
+        // Bail if not found
         if (user == null)
             return status.AddError("Could not find the user you were looking for.");
 
+        // Error-checking
         if (user.TenantId != null && _options.LinkToTenantType != LinkToTenantTypes.AppAndHierarchicalUsers)
             throw new AuthPermissionsException(
                 $"The option's {nameof(AuthPermissionsOptions.LinkToTenantType)} parameter is set to {LinkToTenantTypes.OnlyAppUsers}, " +
                 "which means a user linked to a tenant can't use the Access Tenant Data feature.");
 
+        // Get the tenant record from the db for the passed tenantId
         var tenantToLinkTo = await _context.Tenants.SingleOrDefaultAsync(x => x.TenantId == tenantId);
+
+        // Bail if not found
         if (tenantToLinkTo == null)
             return status.AddError("Could not find the tenant you were looking for.");
 
+        // REDUNDANT--Bail if any errors
         if (status.HasErrors)
             return status;
 
+        // Update the user's cookie
         _cookieAccessor.AddOrUpdateCookie(EncodeCookieContent(tenantToLinkTo), _options.NumMinutesBeforeCookieTimesOut);
 
+
+        // All done
         status.Message = $"You are now linked the the data of the tenant called '{tenantToLinkTo.TenantFullName}'";
         return status;
     }

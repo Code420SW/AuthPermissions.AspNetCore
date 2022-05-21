@@ -179,7 +179,10 @@ namespace AuthPermissions.BaseCode.DataLayer.Classes
         /// <returns></returns>
         public static string CombineParentNameWithTenantName(string thisTenantName, string fullParentName)
         {
+            // Null tenant names not allowed
             if (thisTenantName == null) throw new ArgumentNullException(nameof(thisTenantName));
+
+            // Create the new full parent name
             return fullParentName == null ? thisTenantName : $"{fullParentName} | {thisTenantName}";
         }
 
@@ -189,7 +192,10 @@ namespace AuthPermissions.BaseCode.DataLayer.Classes
         /// <param name="newNameAtThisLevel"></param>
         public void UpdateTenantName(string newNameAtThisLevel)
         {
+            // Null tenant names not allowed
             if (newNameAtThisLevel == null) throw new ArgumentNullException(nameof(newNameAtThisLevel));
+
+            // If this is a single-level tenant, update the TenantFullName property and bail
             if (!IsHierarchical)
             {
                 TenantFullName = newNameAtThisLevel.Trim();
@@ -197,14 +203,21 @@ namespace AuthPermissions.BaseCode.DataLayer.Classes
             }
 
             //Its hierarchical, so need to change the names of all its children
+            //
+            // A heirarchial tenant with no children is a problem
             if (Children == null)
                 throw new AuthPermissionsException("The children must be loaded to rename a hierarchical tenant");
+
+            // No special characters allowed in the new tenant name
             if (newNameAtThisLevel.Contains('|'))
                 throw new AuthPermissionsBadDataException("The tenant name must not contain the character '|' because that character is used to separate the names in the hierarchical order", 
                     nameof(newNameAtThisLevel));
 
+            // This is the official way to combine the parent name and the individual tenant name
+            // We will get the updated full paternt name for the tenant
             TenantFullName = CombineParentNameWithTenantName(newNameAtThisLevel.Trim(), Parent?.TenantFullName);
 
+            // This will recursively move through the children of a parent and call the action applies a change to each child
             RecursivelyChangeChildNames(this, Children, (parent, child) =>
             {
                 var thisLevelTenantName = ExtractEndLeftTenantName(child.TenantFullName);

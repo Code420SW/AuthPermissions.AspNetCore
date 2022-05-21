@@ -29,10 +29,13 @@ namespace ExamplesCommonCode.CommonAdmin
                 .Select(x => x.PermissionName);
         }
 
-        public static RoleCreateUpdateDto SetupForCreateUpdate(string roleName, string description, 
-            List<string> rolePermissions, List<PermissionDisplay> allPermissionNames,
-            RoleTypes roleType = RoleTypes.Normal)
+        public static RoleCreateUpdateDto SetupForCreateUpdate(string roleName,
+                                                               string description,
+                                                               List<string> rolePermissions,
+                                                               List<PermissionDisplay> allPermissionNames,
+                                                               RoleTypes roleType = RoleTypes.Normal)
         {
+            // Ensure rolePermisions is not null
             rolePermissions ??= new List<string>();
 
             return new RoleCreateUpdateDto
